@@ -25,6 +25,8 @@
   #stats span { color:var(--muted); display:block; font-size:12px; }
   #list { flex:1; overflow:auto; padding:6px 0; }
   .trip { padding:6px 14px; font-weight:600; display:flex; flex-wrap:wrap; gap:8px; align-items:center; background:var(--panel); border-top:1px solid var(--line); position:sticky; top:0; }
+  .fold { padding:0 4px; border:0; background:none; line-height:1; font-size:12px; width:16px; }
+  .stages[hidden] { display:none; }
   label.row { display:flex; gap:8px; align-items:flex-start; padding:3px 14px 3px 22px; cursor:pointer; }
   label.row:hover { background:var(--panel); }
   .sw { width:10px; height:10px; border-radius:50%; margin-top:5px; flex:none; background:#999; }
@@ -120,14 +122,23 @@ for (const t of tracks) { if (!byTrip.has(t.trip)) byTrip.set(t.trip, []); byTri
 for (const [trip, ts] of byTrip) {
   const h = document.createElement("div");
   h.className = "trip";
-  h.innerHTML = `<input type="checkbox" checked data-trip="${esc(trip)}"> ${esc(trip)} <span class="meta">${ts.length} Etappen · ${nm(ts.reduce((s, x) => s + x.dist, 0))} · Ø ${kn(ts.reduce((s, x) => s + x.dist, 0), ts.reduce((s, x) => s + x.t1 - x.t0, 0))}</span>`;
+  h.innerHTML = `<button class="fold" title="Etappen ein-/ausklappen" aria-expanded="false">▸</button><input type="checkbox" checked data-trip="${esc(trip)}"> ${esc(trip)} <span class="meta">${ts.length} Etappen · ${nm(ts.reduce((s, x) => s + x.dist, 0))} · Ø ${kn(ts.reduce((s, x) => s + x.dist, 0), ts.reduce((s, x) => s + x.t1 - x.t0, 0))}</span>`;
   list.appendChild(h);
+  const box = document.createElement("div");
+  box.className = "stages"; box.hidden = true;  // standardmäßig eingeklappt
+  list.appendChild(box);
+  const fold = h.querySelector(".fold");
+  fold.onclick = () => {
+    box.hidden = !box.hidden;
+    fold.textContent = box.hidden ? "▸" : "▾";
+    fold.setAttribute("aria-expanded", String(!box.hidden));
+  };
   for (const t of ts) {
     const l = document.createElement("label");
     l.className = "row";
     l.innerHTML = `<input type="checkbox" checked data-id="${t.id}"><span class="sw" id="sw${t.id}"></span>
       <span>${esc(t.name)}<div class="meta">${fmtDate(t.t0)} · ${nm(t.dist)} · Ø ${kn(t.dist, t.t1 - t.t0)}</div></span>`;
-    list.appendChild(l);
+    box.appendChild(l);
   }
 }
 list.addEventListener("change", e => {
