@@ -41,6 +41,7 @@
   #drop h2 { margin:0 0 12px; font-size:18px; }
   .btn { display:inline-block; padding:6px 14px; background:var(--accent); color:#fff; border-radius:6px; cursor:pointer; }
   code { background:var(--panel); padding:1px 5px; border-radius:4px; }
+  .arr { background:none; border:0; pointer-events:none; }
   .ts { background:var(--bg); color:var(--fg); border:1px solid var(--line); font-size:11px; padding:1px 5px; box-shadow:none; }
   .ts::before { display:none; }
   @media (max-width:700px) { body { flex-direction:column-reverse; } aside { width:100%; max-width:none; height:45vh; border-right:0; } #map { height:55vh; } }
@@ -62,6 +63,7 @@
     <label><input type="checkbox" id="optGaps" checked> Lücken gestrichelt</label>
     <label><input type="checkbox" id="optMarkers"> Marker</label>
     <label><input type="checkbox" id="optTimes"> Startzeiten</label>
+    <label><input type="checkbox" id="optDir"> Richtung (Pfeile, Start/Ziel)</label>
     <label><input type="checkbox" id="optSea" checked> Seezeichen</label>
   </div>
 </aside>
@@ -285,6 +287,9 @@ const sea = L.tileLayer("https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png",
 const map = L.map("map", { layers: [osm, sea], preferCanvas: true }).setView([54.3, 11], 8);
 const routeLayer = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
+const arrowLayer = L.layerGroup().addTo(map);
+const ARROW_GAP = 90;  // Pixel zwischen zwei Richtungspfeilen
+let arrowTracks = [];  // gezeichnete Etappen: { ll, c }
 
 const fmtDate = ts => new Date(ts * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
 const fmtStart = ts => new Date(ts * 1000).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -357,12 +362,39 @@ function setAll(on) {
 }
 document.getElementById("all").onclick = () => setAll(true);
 document.getElementById("none").onclick = () => setAll(false);
-for (const id of ["optGaps", "optMarkers", "optTimes", "optSea"]) document.getElementById(id).onchange = () => draw(false);
+for (const id of ["optGaps", "optMarkers", "optTimes", "optDir", "optSea"]) document.getElementById(id).onchange = () => draw(false);
 
 function chosen() { return tracks.filter(t => sel.has(t.id)); }  // bereits nach Startzeit sortiert
 
+// Pfeile in festem Pixelabstand entlang jeder Etappe; nur im sichtbaren Ausschnitt
+function drawArrows() {
+  arrowLayer.clearLayers();
+  if (!document.getElementById("optDir").checked) return;
+  const view = map.getBounds().pad(0.2);
+  for (const { ll, c } of arrowTracks) {
+    let prev = map.latLngToLayerPoint(ll[0]), acc = ARROW_GAP / 2;
+    for (let i = 1; i < ll.length; i++) {
+      const cur = map.latLngToLayerPoint(ll[i]);
+      let dx = cur.x - prev.x, dy = cur.y - prev.y, len = Math.hypot(dx, dy);
+      if (len === 0) continue;
+      let from = 0;
+      while (acc <= len - from) {
+        from += acc; acc = ARROW_GAP;
+        const f = from / len, pos = map.layerPointToLatLng([prev.x + dx * f, prev.y + dy * f]);
+        if (view.contains(pos))
+          L.marker(pos, { interactive: false, keyboard: false, icon: L.divIcon({ className: "arr", iconSize: [14, 14], iconAnchor: [7, 7],
+            html: `<svg width="14" height="14" viewBox="0 0 14 14" style="transform:rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)"><polygon points="2,1 13,7 2,13 5,7" fill="${c}" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>` }) }).addTo(arrowLayer);
+      }
+      acc -= len - from; prev = cur;
+    }
+  }
+}
+map.on("moveend", drawArrows);
+
 function draw(fit) {
   routeLayer.clearLayers(); markerLayer.clearLayers();
+  arrowTracks = [];
+  const dir = document.getElementById("optDir").checked;
   const ch = chosen();
   const bounds = [];
   const tripIdx = new Map();  // Reise -> Farbindex, in zeitlicher Reihenfolge der Auswahl
@@ -374,6 +406,12 @@ function draw(fit) {
     bounds.push(...ll);
     L.polyline(ll, { color: c, weight: 4, opacity: .9 }).addTo(routeLayer)
       .bindPopup(`<b>${esc(t.name)}</b><br>${esc(t.trip)}<br>${fmtDate(t.t0)} · ${nm(t.dist)} · ${fmtDur(t.t1 - t.t0)} · Ø ${kn(t.dist, t.t1 - t.t0)}`);
+    arrowTracks.push({ ll, c });
+    if (dir) {
+      const dot = (p, fill, what) => L.circleMarker(p, { radius: 5, color: "#fff", weight: 2, fillColor: fill, fillOpacity: 1 })
+        .addTo(routeLayer).bindTooltip(`${what} · ${esc(t.name)}`);
+      dot(ll[0], "#1a9850", "Start"); dot(ll[ll.length - 1], "#d73027", "Ziel");
+    }
     if (document.getElementById("optTimes").checked) {
       L.circleMarker(ll[0], { radius: 3, color: c, weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(routeLayer)
         .bindTooltip(fmtStart(t.t0), { permanent: true, direction: "top", offset: [0, -4], className: "ts" });
@@ -394,6 +432,7 @@ function draw(fit) {
     for (const m of DATA.markers)
       L.marker([m.lat, m.lon]).addTo(markerLayer)
         .bindPopup(`<b>${esc(m.name)}</b>${m.note ? "<br>" + esc(m.note) : ""}<br>${m.ts ? fmtDate(m.ts) : ""}`);
+  drawArrows();
   document.getElementById("optSea").checked ? sea.addTo(map) : map.removeLayer(sea);
 
   const d = ch.reduce((s, t) => s + t.dist, 0), sec = ch.reduce((s, t) => s + (t.t1 - t.t0), 0);
