@@ -288,7 +288,7 @@ const map = L.map("map", { layers: [osm, sea], preferCanvas: true }).setView([54
 const routeLayer = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 const arrowLayer = L.layerGroup().addTo(map);
-const ARROW_GAP = 90;  // Pixel zwischen zwei Richtungspfeilen
+const ARROW_GAP = 360;  // Pixel zwischen zwei Richtungspfeilen
 let arrowTracks = [];  // gezeichnete Etappen: { ll, c }
 
 const fmtDate = ts => new Date(ts * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
