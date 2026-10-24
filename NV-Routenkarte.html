@@ -414,7 +414,7 @@ function draw(fit) {
     if (dir) {
       const dot = (p, fill, what) => L.circleMarker(p, { radius: 5, color: "#fff", weight: 2, fillColor: fill, fillOpacity: 1 })
         .addTo(routeLayer).bindTooltip(`${what} · ${esc(t.name)}`);
-      dot(ll[0], "#1a9850", "Start"); dot(ll[ll.length - 1], "#d73027", "Ziel");
+      dot(ll[0], c, "Start"); dot(ll[ll.length - 1], c, "Ziel");
     }
     if (document.getElementById("optTimes").checked) {
       L.circleMarker(ll[0], { radius: 3, color: c, weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(routeLayer)
