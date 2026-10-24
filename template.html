@@ -96,6 +96,7 @@ const routeLayer = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 const arrowLayer = L.layerGroup().addTo(map);
 const ARROW_GAP = 360;  // Pixel zwischen zwei Richtungspfeilen
+const ARROW_SMOOTH = 25;  // Pixel vor/hinter dem Pfeil, über die die Richtung gemittelt wird
 let arrowTracks = [];  // gezeichnete Etappen: { ll, c }
 
 const fmtDate = ts => new Date(ts * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -179,20 +180,23 @@ function drawArrows() {
   if (!document.getElementById("optDir").checked) return;
   const view = map.getBounds().pad(0.2);
   for (const { ll, c } of arrowTracks) {
-    let prev = map.latLngToLayerPoint(ll[0]), acc = ARROW_GAP / 2;
-    for (let i = 1; i < ll.length; i++) {
-      const cur = map.latLngToLayerPoint(ll[i]);
-      let dx = cur.x - prev.x, dy = cur.y - prev.y, len = Math.hypot(dx, dy);
-      if (len === 0) continue;
-      let from = 0;
-      while (acc <= len - from) {
-        from += acc; acc = ARROW_GAP;
-        const f = from / len, pos = map.layerPointToLatLng([prev.x + dx * f, prev.y + dy * f]);
-        if (view.contains(pos))
-          L.marker(pos, { interactive: false, keyboard: false, icon: L.divIcon({ className: "arr", iconSize: [14, 14], iconAnchor: [7, 7],
-            html: `<svg width="14" height="14" viewBox="0 0 14 14" style="transform:rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)"><polygon points="2,1 13,7 2,13 5,7" fill="${c}" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>` }) }).addTo(arrowLayer);
-      }
-      acc -= len - from; prev = cur;
+    const pts = ll.map(p => map.latLngToLayerPoint(p)), cum = [0];  // Pixelpunkte und Bogenlänge
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + pts[i].distanceTo(pts[i - 1]));
+    const total = cum[cum.length - 1];
+    const at = s => {  // Punkt bei Bogenlänge s
+      let lo = 0, hi = cum.length - 1;
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; cum[m] <= s ? lo = m : hi = m; }
+      const seg = cum[hi] - cum[lo], f = seg > 0 ? (s - cum[lo]) / seg : 0;
+      return L.point(pts[lo].x + (pts[hi].x - pts[lo].x) * f, pts[lo].y + (pts[hi].y - pts[lo].y) * f);
+    };
+    for (let s = ARROW_GAP / 2; s < total; s += ARROW_GAP) {
+      const p = at(s), pos = map.layerPointToLatLng(p);
+      if (!view.contains(pos)) continue;
+      // Richtung über ein Fenster mitteln, damit GPS-Zickzack die Pfeile nicht verdreht
+      const a = at(Math.max(0, s - ARROW_SMOOTH)), b = at(Math.min(total, s + ARROW_SMOOTH));
+      const deg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      L.marker(pos, { interactive: false, keyboard: false, icon: L.divIcon({ className: "arr", iconSize: [14, 14], iconAnchor: [7, 7],
+        html: `<svg width="14" height="14" viewBox="0 0 14 14" style="transform:rotate(${deg}deg)"><polygon points="2,1 13,7 2,13 5,7" fill="${c}" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"/></svg>` }) }).addTo(arrowLayer);
     }
   }
 }
