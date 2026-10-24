@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Routenkarte</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root { --bg:#fff; --fg:#1c2530; --muted:#667; --line:#dde2e8; --accent:#0b6aa8; --panel:#f6f8fa; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161b22; --fg:#e6edf3; --muted:#8b97a5; --line:#30363d; --accent:#58a6ff; --panel:#1c232c; }
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body { display:flex; font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--fg); }
+  aside { width:340px; max-width:45vw; display:flex; flex-direction:column; border-right:1px solid var(--line); }
+  header { padding:12px 14px; border-bottom:1px solid var(--line); }
+  h1 { font-size:16px; margin:0 0 8px; }
+  .btns { display:flex; gap:6px; flex-wrap:wrap; }
+  button { font:inherit; padding:4px 10px; border:1px solid var(--line); background:var(--panel); color:var(--fg); border-radius:6px; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #stats { padding:10px 14px; border-bottom:1px solid var(--line); background:var(--panel); }
+  #stats b { font-size:18px; }
+  #stats span { color:var(--muted); display:block; font-size:12px; }
+  #list { flex:1; overflow:auto; padding:6px 0; }
+  .trip { padding:6px 14px; font-weight:600; display:flex; gap:8px; align-items:center; background:var(--panel); border-top:1px solid var(--line); position:sticky; top:0; }
+  label.row { display:flex; gap:8px; align-items:flex-start; padding:3px 14px 3px 22px; cursor:pointer; }
+  label.row:hover { background:var(--panel); }
+  .sw { width:10px; height:10px; border-radius:50%; margin-top:5px; flex:none; background:#999; }
+  .meta { color:var(--muted); font-size:12px; }
+  #map { flex:1; }
+  .opt { padding:8px 14px; border-top:1px solid var(--line); display:flex; gap:12px; flex-wrap:wrap; color:var(--muted); font-size:13px; }
+  .opt label { cursor:pointer; }
+  @media (max-width:700px) { body { flex-direction:column-reverse; } aside { width:100%; max-width:none; height:45vh; border-right:0; } #map { height:55vh; } }
+</style>
+</head>
+<body>
+<aside>
+  <header>
+    <h1>Routenkarte</h1>
+    <div class="btns">
+      <button id="all">Alle</button>
+      <button id="none">Keine</button>
+      <button id="gpx" class="primary">Als GPX speichern</button>
+    </div>
+  </header>
+  <div id="stats"></div>
+  <div id="list"></div>
+  <div class="opt">
+    <label><input type="checkbox" id="optGaps" checked> Lücken gestrichelt</label>
+    <label><input type="checkbox" id="optMarkers" checked> Marker</label>
+    <label><input type="checkbox" id="optSea" checked> Seezeichen</label>
+  </div>
+</aside>
+<div id="map"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const DATA = /*__DATA__*/null;
+const tracks = DATA.tracks;
+const sel = new Set(tracks.map(t => t.id));
+
+const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+  { maxZoom: 19, attribution: "© OpenStreetMap-Mitwirkende" });
+const sea = L.tileLayer("https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png",
+  { maxZoom: 18, attribution: "Seezeichen © OpenSeaMap" });
+const map = L.map("map", { layers: [osm, sea], preferCanvas: true }).setView([54.3, 11], 8);
+const routeLayer = L.layerGroup().addTo(map);
+const markerLayer = L.layerGroup().addTo(map);
+
+const fmtDate = ts => new Date(ts * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+const fmtDur = s => { const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60); return h + " h " + String(m).padStart(2, "0") + " min"; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function dist(a, b) {  // Meter, Haversine
+  const r = Math.PI / 180, dLat = (b[1] - a[1]) * r, dLon = (b[0] - a[0]) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * r) * Math.cos(b[1] * r) * Math.sin(dLon / 2) ** 2;
+  return 12742000 * Math.asin(Math.sqrt(h));
+}
+for (const t of tracks) {
+  t.dist = 0;
+  for (let i = 1; i < t.pts.length; i++) t.dist += dist(t.pts[i - 1], t.pts[i]);
+  t.t0 = t.pts[0][2]; t.t1 = t.pts[t.pts.length - 1][2];
+}
+const nm = m => (m / 1852).toFixed(1).replace(".", ",") + " sm";
+
+// Farbverlauf entlang der gewählten Etappen
+const color = (i, n) => `hsl(${Math.round(220 - 220 * (n > 1 ? i / (n - 1) : 0))},80%,45%)`;
+
+// Liste aufbauen
+const list = document.getElementById("list");
+const byTrip = new Map();
+for (const t of tracks) { if (!byTrip.has(t.trip)) byTrip.set(t.trip, []); byTrip.get(t.trip).push(t); }
+for (const [trip, ts] of byTrip) {
+  const h = document.createElement("div");
+  h.className = "trip";
+  h.innerHTML = `<input type="checkbox" checked data-trip="${esc(trip)}"> ${esc(trip)} <span class="meta">${ts.length} Etappen</span>`;
+  list.appendChild(h);
+  for (const t of ts) {
+    const l = document.createElement("label");
+    l.className = "row";
+    l.innerHTML = `<input type="checkbox" checked data-id="${t.id}"><span class="sw" id="sw${t.id}"></span>
+      <span>${esc(t.name)}<div class="meta">${fmtDate(t.t0)} · ${nm(t.dist)}</div></span>`;
+    list.appendChild(l);
+  }
+}
+list.addEventListener("change", e => {
+  const el = e.target, id = el.dataset.id, trip = el.dataset.trip;
+  if (id) el.checked ? sel.add(id) : sel.delete(id);
+  if (trip) for (const t of byTrip.get(trip)) {
+    el.checked ? sel.add(t.id) : sel.delete(t.id);
+    list.querySelector(`[data-id="${t.id}"]`).checked = el.checked;
+  }
+  syncTripBoxes(); draw(false);
+});
+function syncTripBoxes() {
+  for (const [trip, ts] of byTrip) {
+    const box = list.querySelector(`[data-trip="${CSS.escape(trip)}"]`);
+    const n = ts.filter(t => sel.has(t.id)).length;
+    box.checked = n === ts.length; box.indeterminate = n > 0 && n < ts.length;
+  }
+}
+function setAll(on) {
+  sel.clear(); if (on) tracks.forEach(t => sel.add(t.id));
+  list.querySelectorAll("input[data-id]").forEach(b => b.checked = on);
+  syncTripBoxes(); draw(true);
+}
+document.getElementById("all").onclick = () => setAll(true);
+document.getElementById("none").onclick = () => setAll(false);
+for (const id of ["optGaps", "optMarkers", "optSea"]) document.getElementById(id).onchange = () => draw(false);
+
+function chosen() { return tracks.filter(t => sel.has(t.id)); }  // bereits nach Startzeit sortiert
+
+function draw(fit) {
+  routeLayer.clearLayers(); markerLayer.clearLayers();
+  const ch = chosen();
+  const bounds = [];
+  ch.forEach((t, i) => {
+    const c = color(i, ch.length);
+    document.getElementById("sw" + t.id).style.background = c;
+    const ll = t.pts.map(p => [p[1], p[0]]);
+    bounds.push(...ll);
+    L.polyline(ll, { color: c, weight: 4, opacity: .9 }).addTo(routeLayer)
+      .bindPopup(`<b>${esc(t.name)}</b><br>${esc(t.trip)}<br>${fmtDate(t.t0)} · ${nm(t.dist)} · ${fmtDur(t.t1 - t.t0)}`);
+    if (document.getElementById("optGaps").checked && i > 0) {
+      const prev = ch[i - 1], a = prev.pts[prev.pts.length - 1], b = t.pts[0];
+      if (dist(a, b) > 100)
+        L.polyline([[a[1], a[0]], [b[1], b[0]]], { color: "#555", weight: 2, dashArray: "6 8", opacity: .8 }).addTo(routeLayer)
+          .bindPopup(`Lücke: ${nm(dist(a, b))} Luftlinie`);
+    }
+  });
+  if (ch.length) {
+    const s = ch[0].pts[0], e = ch[ch.length - 1].pts[ch[ch.length - 1].pts.length - 1];
+    L.circleMarker([s[1], s[0]], { radius: 7, color: "#fff", weight: 2, fillColor: "#1a9850", fillOpacity: 1 }).addTo(routeLayer).bindTooltip("Start");
+    L.circleMarker([e[1], e[0]], { radius: 7, color: "#fff", weight: 2, fillColor: "#d73027", fillOpacity: 1 }).addTo(routeLayer).bindTooltip("Ziel");
+  }
+  if (document.getElementById("optMarkers").checked)
+    for (const m of DATA.markers)
+      L.marker([m.lat, m.lon]).addTo(markerLayer)
+        .bindPopup(`<b>${esc(m.name)}</b>${m.note ? "<br>" + esc(m.note) : ""}<br>${m.ts ? fmtDate(m.ts) : ""}`);
+  document.getElementById("optSea").checked ? sea.addTo(map) : map.removeLayer(sea);
+
+  const d = ch.reduce((s, t) => s + t.dist, 0), sec = ch.reduce((s, t) => s + (t.t1 - t.t0), 0);
+  document.getElementById("stats").innerHTML = ch.length
+    ? `<b>${nm(d)}</b> <span>${(d / 1000).toFixed(0)} km · ${ch.length} Etappen · ${fmtDur(sec)} unterwegs<br>${fmtDate(ch[0].t0)} – ${fmtDate(ch[ch.length - 1].t1)}</span>`
+    : `<span>Keine Etappe gewählt</span>`;
+  if (fit && bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
+}
+
+document.getElementById("gpx").onclick = () => {
+  const ch = chosen();
+  if (!ch.length) return;
+  const seg = t => `<trkseg>${t.pts.map(p => `<trkpt lat="${p[1]}" lon="${p[0]}"><time>${new Date(p[2] * 1000).toISOString()}</time></trkpt>`).join("")}</trkseg>`;
+  const wpts = DATA.markers.map(m => `<wpt lat="${m.lat}" lon="${m.lon}"><name>${esc(m.name)}</name></wpt>`).join("");
+  const gpx = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Routenkarte" xmlns="http://www.topografix.com/GPX/1/1">${wpts}<trk><name>Route</name>${ch.map(seg).join("")}</trk></gpx>`;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([gpx], { type: "application/gpx+xml" }));
+  a.download = "route.gpx"; a.click();
+};
+
+syncTripBoxes(); draw(true);
+</script>
+</body>
+</html>
