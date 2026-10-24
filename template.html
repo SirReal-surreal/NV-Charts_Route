@@ -39,6 +39,8 @@
   #drop h2 { margin:0 0 12px; font-size:18px; }
   .btn { display:inline-block; padding:6px 14px; background:var(--accent); color:#fff; border-radius:6px; cursor:pointer; }
   code { background:var(--panel); padding:1px 5px; border-radius:4px; }
+  .ts { background:var(--bg); color:var(--fg); border:1px solid var(--line); font-size:11px; padding:1px 5px; box-shadow:none; }
+  .ts::before { display:none; }
   @media (max-width:700px) { body { flex-direction:column-reverse; } aside { width:100%; max-width:none; height:45vh; border-right:0; } #map { height:55vh; } }
 </style>
 </head>
@@ -57,6 +59,7 @@
   <div class="opt">
     <label><input type="checkbox" id="optGaps" checked> Lücken gestrichelt</label>
     <label><input type="checkbox" id="optMarkers"> Marker</label>
+    <label><input type="checkbox" id="optTimes"> Startzeiten</label>
     <label><input type="checkbox" id="optSea" checked> Seezeichen</label>
   </div>
 </aside>
@@ -89,6 +92,7 @@ const routeLayer = L.layerGroup().addTo(map);
 const markerLayer = L.layerGroup().addTo(map);
 
 const fmtDate = ts => new Date(ts * 1000).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+const fmtStart = ts => new Date(ts * 1000).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
 const fmtDur = s => { const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60); return h + " h " + String(m).padStart(2, "0") + " min"; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -148,7 +152,7 @@ function setAll(on) {
 }
 document.getElementById("all").onclick = () => setAll(true);
 document.getElementById("none").onclick = () => setAll(false);
-for (const id of ["optGaps", "optMarkers", "optSea"]) document.getElementById(id).onchange = () => draw(false);
+for (const id of ["optGaps", "optMarkers", "optTimes", "optSea"]) document.getElementById(id).onchange = () => draw(false);
 
 function chosen() { return tracks.filter(t => sel.has(t.id)); }  // bereits nach Startzeit sortiert
 
@@ -165,6 +169,10 @@ function draw(fit) {
     bounds.push(...ll);
     L.polyline(ll, { color: c, weight: 4, opacity: .9 }).addTo(routeLayer)
       .bindPopup(`<b>${esc(t.name)}</b><br>${esc(t.trip)}<br>${fmtDate(t.t0)} · ${nm(t.dist)} · ${fmtDur(t.t1 - t.t0)}`);
+    if (document.getElementById("optTimes").checked) {
+      L.circleMarker(ll[0], { radius: 3, color: c, weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(routeLayer)
+        .bindTooltip(fmtStart(t.t0), { permanent: true, direction: "top", offset: [0, -4], className: "ts" });
+    }
     if (document.getElementById("optGaps").checked && i > 0 && ch[i - 1].trip === t.trip && t.trip !== NO_TRIP) {
       const prev = ch[i - 1], a = prev.pts[prev.pts.length - 1], b = t.pts[0];  // nur innerhalb einer Reise verbinden
       if (dist(a, b) > 100)
