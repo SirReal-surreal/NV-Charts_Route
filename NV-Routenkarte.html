@@ -300,6 +300,7 @@ for (const t of tracks) {
   t.t0 = t.pts[0][2]; t.t1 = t.pts[t.pts.length - 1][2];
 }
 const NO_TRIP = "(ohne Reise)";
+const kn = (m, s) => s > 0 ? (m / s * 3600 / 1852).toFixed(1).replace(".", ",") + " kn" : "–";  // Meter, Sekunden -> Knoten
 const nm = m => (m / 1852).toFixed(1).replace(".", ",") + " sm";
 
 // Eine Farbe pro Reise (Überschrift), alle Etappen einer Reise teilen sie
@@ -312,13 +313,13 @@ for (const t of tracks) { if (!byTrip.has(t.trip)) byTrip.set(t.trip, []); byTri
 for (const [trip, ts] of byTrip) {
   const h = document.createElement("div");
   h.className = "trip";
-  h.innerHTML = `<input type="checkbox" checked data-trip="${esc(trip)}"> ${esc(trip)} <span class="meta">${ts.length} Etappen</span>`;
+  h.innerHTML = `<input type="checkbox" checked data-trip="${esc(trip)}"> ${esc(trip)} <span class="meta">${ts.length} Etappen · Ø ${kn(ts.reduce((s, x) => s + x.dist, 0), ts.reduce((s, x) => s + x.t1 - x.t0, 0))}</span>`;
   list.appendChild(h);
   for (const t of ts) {
     const l = document.createElement("label");
     l.className = "row";
     l.innerHTML = `<input type="checkbox" checked data-id="${t.id}"><span class="sw" id="sw${t.id}"></span>
-      <span>${esc(t.name)}<div class="meta">${fmtDate(t.t0)} · ${nm(t.dist)}</div></span>`;
+      <span>${esc(t.name)}<div class="meta">${fmtDate(t.t0)} · ${nm(t.dist)} · Ø ${kn(t.dist, t.t1 - t.t0)}</div></span>`;
     list.appendChild(l);
   }
 }
@@ -361,7 +362,7 @@ function draw(fit) {
     const ll = t.pts.map(p => [p[1], p[0]]);
     bounds.push(...ll);
     L.polyline(ll, { color: c, weight: 4, opacity: .9 }).addTo(routeLayer)
-      .bindPopup(`<b>${esc(t.name)}</b><br>${esc(t.trip)}<br>${fmtDate(t.t0)} · ${nm(t.dist)} · ${fmtDur(t.t1 - t.t0)}`);
+      .bindPopup(`<b>${esc(t.name)}</b><br>${esc(t.trip)}<br>${fmtDate(t.t0)} · ${nm(t.dist)} · ${fmtDur(t.t1 - t.t0)} · Ø ${kn(t.dist, t.t1 - t.t0)}`);
     if (document.getElementById("optTimes").checked) {
       L.circleMarker(ll[0], { radius: 3, color: c, weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(routeLayer)
         .bindTooltip(fmtStart(t.t0), { permanent: true, direction: "top", offset: [0, -4], className: "ts" });
@@ -386,7 +387,7 @@ function draw(fit) {
 
   const d = ch.reduce((s, t) => s + t.dist, 0), sec = ch.reduce((s, t) => s + (t.t1 - t.t0), 0);
   document.getElementById("stats").innerHTML = ch.length
-    ? `<b>${nm(d)}</b> <span>${(d / 1000).toFixed(0)} km · ${ch.length} Etappen · ${fmtDur(sec)} unterwegs<br>${fmtDate(ch[0].t0)} – ${fmtDate(ch[ch.length - 1].t1)}</span>`
+    ? `<b>${nm(d)}</b> <span>${(d / 1000).toFixed(0)} km · ${ch.length} Etappen · ${fmtDur(sec)} unterwegs<br>Ø ${kn(d, sec)} (ohne Liegezeiten)<br>${fmtDate(ch[0].t0)} – ${fmtDate(ch[ch.length - 1].t1)}</span>`
     : `<span>Keine Etappe gewählt</span>`;
   if (fit && bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
 }
