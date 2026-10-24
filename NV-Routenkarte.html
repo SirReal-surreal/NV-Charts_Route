@@ -412,7 +412,7 @@ function draw(fit) {
       .bindPopup(`<b>${esc(t.name)}</b><br>${esc(t.trip)}<br>${fmtDate(t.t0)} · ${nm(t.dist)} · ${fmtDur(t.t1 - t.t0)} · Ø ${kn(t.dist, t.t1 - t.t0)}`);
     arrowTracks.push({ ll, c });
     if (dir) {
-      const dot = (p, fill, what) => L.circleMarker(p, { radius: 5, stroke: false, fillColor: fill, fillOpacity: 1 })
+      const dot = (p, fill, what) => L.circleMarker(p, { radius: 5, color: "#fff", weight: 1.2, fillColor: fill, fillOpacity: 1 })
         .addTo(routeLayer).bindTooltip(`${what} · ${esc(t.name)}`);
       dot(ll[0], c, "Start"); dot(ll[ll.length - 1], c, "Ziel");
     }
