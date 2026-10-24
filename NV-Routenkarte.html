@@ -295,10 +295,11 @@ for (const t of tracks) {
   for (let i = 1; i < t.pts.length; i++) t.dist += dist(t.pts[i - 1], t.pts[i]);
   t.t0 = t.pts[0][2]; t.t1 = t.pts[t.pts.length - 1][2];
 }
+const NO_TRIP = "(ohne Reise)";
 const nm = m => (m / 1852).toFixed(1).replace(".", ",") + " sm";
 
-// Farbverlauf entlang der gewählten Etappen
-const color = (i, n) => `hsl(${Math.round(220 - 220 * (n > 1 ? i / (n - 1) : 0))},80%,45%)`;
+// Eine Farbe pro Reise (Überschrift), alle Etappen einer Reise teilen sie
+const color = i => `hsl(${Math.round(i * 137.508) % 360},72%,42%)`;
 
 // Liste aufbauen
 const list = document.getElementById("list");
@@ -348,15 +349,17 @@ function draw(fit) {
   routeLayer.clearLayers(); markerLayer.clearLayers();
   const ch = chosen();
   const bounds = [];
+  const tripIdx = new Map();  // Reise -> Farbindex, in zeitlicher Reihenfolge der Auswahl
+  for (const t of ch) if (!tripIdx.has(t.trip)) tripIdx.set(t.trip, tripIdx.size);
   ch.forEach((t, i) => {
-    const c = color(i, ch.length);
+    const c = color(tripIdx.get(t.trip));
     document.getElementById("sw" + t.id).style.background = c;
     const ll = t.pts.map(p => [p[1], p[0]]);
     bounds.push(...ll);
     L.polyline(ll, { color: c, weight: 4, opacity: .9 }).addTo(routeLayer)
       .bindPopup(`<b>${esc(t.name)}</b><br>${esc(t.trip)}<br>${fmtDate(t.t0)} · ${nm(t.dist)} · ${fmtDur(t.t1 - t.t0)}`);
-    if (document.getElementById("optGaps").checked && i > 0) {
-      const prev = ch[i - 1], a = prev.pts[prev.pts.length - 1], b = t.pts[0];
+    if (document.getElementById("optGaps").checked && i > 0 && ch[i - 1].trip === t.trip && t.trip !== NO_TRIP) {
+      const prev = ch[i - 1], a = prev.pts[prev.pts.length - 1], b = t.pts[0];  // nur innerhalb einer Reise verbinden
       if (dist(a, b) > 100)
         L.polyline([[a[1], a[0]], [b[1], b[0]]], { color: "#555", weight: 2, dashArray: "6 8", opacity: .8 }).addTo(routeLayer)
           .bindPopup(`Lücke: ${nm(dist(a, b))} Luftlinie`);
@@ -396,7 +399,7 @@ document.getElementById("intro").hidden = true;
 }
 
 // ---- Laden der navipack.trip im Browser (nur Standalone-Variante) ----
-const W = 2 * Math.PI * 6378137;  // Weltbreite in NV-Koordinaten (Ursprung oben links)
+const W = 2 * Math.PI * 6371000;  // Weltbreite in NV-Koordinaten (Kugelradius 6371 km, Ursprung oben links)
 const xyToLonLat = (x, y) => [x / W * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * y / W))) * 180 / Math.PI];
 const r5 = n => Math.round(n * 1e5) / 1e5;
 

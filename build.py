@@ -8,7 +8,7 @@ import base64, json, math, os, shutil, sqlite3, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB = os.path.expanduser("~/Library/Application Support/nvcharts/navipack.trip")
-W = 2 * math.pi * 6378137  # Weltbreite in NV-Koordinaten (Ursprung oben links)
+W = 2 * math.pi * 6371000  # Weltbreite in NV-Koordinaten (Kugelradius 6371 km, Ursprung oben links)
 
 
 def xy_to_lonlat(x, y):
