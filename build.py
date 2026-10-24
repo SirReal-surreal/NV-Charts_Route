@@ -2,8 +2,9 @@
 """Liest Tracks und Marker aus NV Charts (navipack.trip) und erzeugt routenkarte.html.
 
 Aufruf: python3 build.py [pfad/zu/navipack.trip]
+        python3 build.py --standalone   (Datei zum Weitergeben, ohne eigene Daten)
 """
-import json, math, os, shutil, sqlite3, sys, tempfile
+import base64, json, math, os, shutil, sqlite3, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB = os.path.expanduser("~/Library/Application Support/nvcharts/navipack.trip")
@@ -16,7 +17,26 @@ def xy_to_lonlat(x, y):
     return lon, lat
 
 
+def standalone():
+    """Eine HTML-Datei mit eingebautem SQLite-Leser; der Empfänger wählt seine eigene navipack.trip."""
+    vendor = os.path.join(HERE, "vendor")
+    with open(os.path.join(vendor, "sql-wasm.js"), encoding="utf-8") as f:
+        js = f.read()
+    with open(os.path.join(vendor, "sql-wasm.wasm"), "rb") as f:
+        wasm = base64.b64encode(f.read()).decode()
+    with open(os.path.join(HERE, "template.html"), encoding="utf-8") as f:
+        html = f.read()
+    inline = '<script>window.SQL_WASM=Uint8Array.from(atob("%s"),c=>c.charCodeAt(0));</script>\n<script>%s</script>' % (wasm, js)
+    html = html.replace("<!--__SQLJS__-->", inline)
+    out = os.path.join(HERE, "NV-Routenkarte.html")
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(html)
+    print("Standalone -> %s" % out)
+
+
 def main():
+    if "--standalone" in sys.argv:
+        return standalone()
     src = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DB
     with tempfile.TemporaryDirectory() as tmp:  # Kopie, damit die App-Datenbank unberührt bleibt
         db = os.path.join(tmp, "trip.db")
@@ -36,7 +56,7 @@ def main():
                 "trip": m.get("trip") or "(ohne Reise)",
                 "pts": [[round(p[0], 5), round(p[1], 5), int(p[2])] for p in pts],
             })
-        for k, v in con.execute("select k, v from nkvt where k like 'u/mrk/%' and del=0"):
+        for k, v in con.execute("select k, v from nkvt where k like 'u/mrk/%/marker' and del=0"):
             m = json.loads(v)
             lon, lat = xy_to_lonlat(*m["xy"])
             markers.append({"name": m.get("name") or "", "note": m.get("anam") or "",

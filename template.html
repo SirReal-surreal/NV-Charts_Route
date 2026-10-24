@@ -32,6 +32,13 @@
   #map { flex:1; }
   .opt { padding:8px 14px; border-top:1px solid var(--line); display:flex; gap:12px; flex-wrap:wrap; color:var(--muted); font-size:13px; }
   .opt label { cursor:pointer; }
+  #intro { position:fixed; inset:0; z-index:2000; background:var(--bg); display:flex; align-items:center; justify-content:center; padding:16px; }
+  #intro[hidden] { display:none; }
+  #drop { max-width:480px; padding:28px; border:2px dashed var(--line); border-radius:12px; }
+  #drop.over { border-color:var(--accent); }
+  #drop h2 { margin:0 0 12px; font-size:18px; }
+  .btn { display:inline-block; padding:6px 14px; background:var(--accent); color:#fff; border-radius:6px; cursor:pointer; }
+  code { background:var(--panel); padding:1px 5px; border-radius:4px; }
   @media (max-width:700px) { body { flex-direction:column-reverse; } aside { width:100%; max-width:none; height:45vh; border-right:0; } #map { height:55vh; } }
 </style>
 </head>
@@ -54,10 +61,22 @@
   </div>
 </aside>
 <div id="map"></div>
+<div id="intro" hidden>
+  <div id="drop">
+    <h2>Routenkarte aus NV Charts</h2>
+    <p>Wähle die Datei <b>navipack.trip</b> aus deinem NV-Charts-Ordner. Sie wird nur in diesem Browserfenster gelesen und nirgendwohin hochgeladen.</p>
+    <p><label class="btn"><input type="file" id="pick" hidden>Datei auswählen …</label> oder hierher ziehen</p>
+    <p class="meta">Ordner: <code>~/Library/Application Support/nvcharts</code> <button id="copy">Pfad kopieren</button><br>
+    Im Auswahlfenster: <b>Cmd + Umschalt + G</b>, Pfad einfügen, Enter.</p>
+    <p id="msg" class="meta"></p>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!--__SQLJS__-->
 <script>
-const DATA = /*__DATA__*/null;
+const EMBEDDED = /*__DATA__*/null;
+function start(DATA) {
 const tracks = DATA.tracks;
 const sel = new Set(tracks.map(t => t.id));
 
@@ -180,6 +199,61 @@ document.getElementById("gpx").onclick = () => {
 };
 
 syncTripBoxes(); draw(true);
+document.getElementById("intro").hidden = true;
+}
+
+// ---- Laden der navipack.trip im Browser (nur Standalone-Variante) ----
+const W = 2 * Math.PI * 6378137;  // Weltbreite in NV-Koordinaten (Ursprung oben links)
+const xyToLonLat = (x, y) => [x / W * 360 - 180, Math.atan(Math.sinh(Math.PI * (1 - 2 * y / W))) * 180 / Math.PI];
+const r5 = n => Math.round(n * 1e5) / 1e5;
+
+async function loadTrip(file) {
+  const msg = document.getElementById("msg");
+  msg.textContent = "Lese " + file.name + " …";
+  try {
+    const SQL = await initSqlJs(window.SQL_WASM ? { wasmBinary: window.SQL_WASM } : {});
+    const db = new SQL.Database(new Uint8Array(await file.arrayBuffer()));
+    const dec = new TextDecoder(), json = b => JSON.parse(typeof b === "string" ? b : dec.decode(b));
+    const get = k => { const r = db.exec("select v from nkvt where k='" + k + "' and del=0"); return r.length ? json(r[0].values[0][0]) : null; };
+    const out = { tracks: [], markers: [] };
+    const lolas = db.exec("select k, v from nkvt where k like 'u/trk/%/lola' and del=0");
+    for (const [k, v] of lolas.length ? lolas[0].values : []) {
+      const id = k.split("/")[2];
+      let pts, m;
+      try { pts = json(v); m = get("u/trk/" + id + "/track") || {}; } catch (e) { continue; }  // kaputte Einträge überspringen
+      if (!Array.isArray(pts) || pts.length < 2) continue;
+      out.tracks.push({ id, name: m.name || "(ohne Namen)", trip: m.trip || "(ohne Reise)",
+        pts: pts.map(p => [r5(p[0]), r5(p[1]), Math.round(p[2])]) });
+    }
+    const mrks = db.exec("select v from nkvt where k like 'u/mrk/%/marker' and del=0");
+    for (const [v] of mrks.length ? mrks[0].values : []) {
+      try {
+        const m = json(v), [lon, lat] = xyToLonLat(m.xy[0], m.xy[1]);
+        out.markers.push({ name: m.name || "", note: m.anam || "", ts: m.id, lat: r5(lat), lon: r5(lon) });
+      } catch (e) { /* unlesbarer Marker wird übersprungen */ }
+    }
+    if (!out.tracks.length) { msg.textContent = "In dieser Datei wurden keine Tracks gefunden. Es muss die Datei navipack.trip sein."; return; }
+    out.tracks.sort((a, b) => a.pts[0][2] - b.pts[0][2]);
+    start(out);
+  } catch (e) {
+    msg.textContent = "Die Datei konnte nicht gelesen werden: " + e.message;
+  }
+}
+const pick = document.getElementById("pick");
+if (EMBEDDED) start(EMBEDDED);
+else {
+  document.getElementById("intro").hidden = false;
+  pick.onchange = () => pick.files[0] && loadTrip(pick.files[0]);
+  const dz = document.getElementById("drop");
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add("over"); };
+  dz.ondragleave = () => dz.classList.remove("over");
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove("over"); e.dataTransfer.files[0] && loadTrip(e.dataTransfer.files[0]); };
+  document.getElementById("copy").onclick = () => {
+    const p = "~/Library/Application Support/nvcharts";
+    navigator.clipboard && navigator.clipboard.writeText(p).catch(() => {});
+    document.getElementById("copy").textContent = "Kopiert";
+  };
+}
 </script>
 </body>
 </html>
