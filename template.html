@@ -2,8 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Routenkarte</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Routenkarte</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
   :root { --bg:#fff; --fg:#1c2530; --muted:#667; --line:#dde2e8; --accent:#0b6aa8; --panel:#f6f8fa; }
@@ -73,8 +72,8 @@
     <h2>Routenkarte aus NV Charts</h2>
     <p>Wähle die Datei <b>navipack.trip</b> aus deinem NV-Charts-Ordner. Sie wird nur in diesem Browserfenster gelesen und nirgendwohin hochgeladen.</p>
     <p><label class="btn"><input type="file" id="pick" hidden>Datei auswählen …</label> oder hierher ziehen</p>
-    <p class="meta">Ordner: <code>~/Library/Application Support/nvcharts</code> <button id="copy">Pfad kopieren</button><br>
-    Im Auswahlfenster: <b>Cmd + Umschalt + G</b>, Pfad einfügen, Enter.</p>
+    <p class="meta">Ordner: <code id="dir"></code> <button id="copy">Pfad kopieren</button><br>
+    <span id="hint"></span></p>
     <p id="msg" class="meta"></p>
   </div>
 </div>
@@ -314,8 +313,13 @@ else {
   dz.ondragover = e => { e.preventDefault(); dz.classList.add("over"); };
   dz.ondragleave = () => dz.classList.remove("over");
   dz.ondrop = e => { e.preventDefault(); dz.classList.remove("over"); e.dataTransfer.files[0] && loadTrip(e.dataTransfer.files[0]); };
+  const win = /Win/i.test(navigator.platform || navigator.userAgent);
+  const p = win ? "C:\\ProgramData\\nvcharts" : "~/Library/Application Support/nvcharts";
+  document.getElementById("dir").textContent = p;
+  document.getElementById("hint").innerHTML = win
+    ? "Im Auswahlfenster: Pfad in die Adresszeile einfügen, Enter. (<b>ProgramData</b> ist ein versteckter Ordner.) Falls die Datei gesperrt ist: NV Charts beenden oder die Datei kopieren."
+    : "Im Auswahlfenster: <b>Cmd + Umschalt + G</b>, Pfad einfügen, Enter.";
   document.getElementById("copy").onclick = () => {
-    const p = "~/Library/Application Support/nvcharts";
     navigator.clipboard && navigator.clipboard.writeText(p).catch(() => {});
     document.getElementById("copy").textContent = "Kopiert";
   };

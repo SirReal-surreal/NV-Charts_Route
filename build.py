@@ -7,7 +7,10 @@ Aufruf: python3 build.py [pfad/zu/navipack.trip]
 import base64, json, math, os, shutil, sqlite3, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_DB = os.path.expanduser("~/Library/Application Support/nvcharts/navipack.trip")
+if sys.platform == "win32":
+    DEFAULT_DB = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "nvcharts", "navipack.trip")
+else:
+    DEFAULT_DB = os.path.expanduser("~/Library/Application Support/nvcharts/navipack.trip")
 W = 2 * math.pi * 6371000  # Weltbreite in NV-Koordinaten (Kugelradius 6371 km, Ursprung oben links)
 
 
@@ -61,6 +64,7 @@ def main():
             lon, lat = xy_to_lonlat(*m["xy"])
             markers.append({"name": m.get("name") or "", "note": m.get("anam") or "",
                             "ts": m.get("id"), "lat": round(lat, 5), "lon": round(lon, 5)})
+        con.close()  # unter Windows lässt sich die Kopie sonst nicht löschen
     tracks.sort(key=lambda t: t["pts"][0][2])
     data = json.dumps({"tracks": tracks, "markers": markers}, ensure_ascii=False, separators=(",", ":"))
     data = data.replace("</", "<\\/")
