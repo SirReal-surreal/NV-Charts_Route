@@ -52,10 +52,12 @@ def main():
             if len(pts) < 2:
                 continue
             row = con.execute("select v from nkvt where k=? and del=0", ("u/trk/%s/track" % tid,)).fetchone()
-            m = json.loads(row[0]) if row else {}  # manche Tracks haben keine Metadaten
+            if not row:
+                continue  # ohne Metadaten-Eintrag zeigt NV Charts den Track auch nicht (Überrest)
+            m = json.loads(row[0])
             tracks.append({
                 "id": tid,
-                "name": m.get("name") or "(ohne Namen)",
+                "name": m.get("name") or m.get("anam") or "(ohne Namen)",  # anam: "Start --> Ziel", wenn kein eigener Name vergeben wurde
                 "trip": m.get("trip") or "(ohne Reise)",
                 "pts": [[round(p[0], 5), round(p[1], 5), int(p[2])] for p in pts],
             })

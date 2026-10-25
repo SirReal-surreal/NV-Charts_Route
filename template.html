@@ -285,9 +285,9 @@ async function loadTrip(file) {
     for (const [k, v] of lolas.length ? lolas[0].values : []) {
       const id = k.split("/")[2];
       let pts, m;
-      try { pts = json(v); m = get("u/trk/" + id + "/track") || {}; } catch (e) { continue; }  // kaputte Einträge überspringen
-      if (!Array.isArray(pts) || pts.length < 2) continue;
-      out.tracks.push({ id, name: m.name || "(ohne Namen)", trip: m.trip || "(ohne Reise)",
+      try { pts = json(v); m = get("u/trk/" + id + "/track"); } catch (e) { continue; }  // kaputte Einträge überspringen
+      if (!Array.isArray(pts) || pts.length < 2 || !m) continue;  // ohne Metadaten zeigt NV Charts den Track auch nicht
+      out.tracks.push({ id, name: m.name || m.anam || "(ohne Namen)", trip: m.trip || "(ohne Reise)",
         pts: pts.map(p => [r5(p[0]), r5(p[1]), Math.round(p[2])]) });
     }
     const mrks = db.exec("select v from nkvt where k like 'u/mrk/%/marker' and del=0");
